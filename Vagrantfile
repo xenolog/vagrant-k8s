@@ -9,6 +9,7 @@ ENV["VAGRANT_DEFAULT_PROVIDER"] = "libvirt"
 prefix = pool.gsub(/\.\d+\.\d+\/16$/, "")
 
 num_racks = (ENV["VAGRANT_MR_NUM_OF_RACKS"] || "2").to_i
+base_as_number = (ENV["VAGRANT_MR_NETWORK_BASE_AS_NUMBER"] || "65000").to_i
 
 vm_memory = 6144
 vm_cpus = 2
@@ -49,26 +50,53 @@ File.open("nodes", "w") do |file|
   file.write("\n")
 end
 
-# Create network_metadata for ansible inventory
-network_metadata = {
-  'nodes' => {
+master_node_name = "%s-000" % [node_name_prefix]
+master_node_ipaddr = public_subnets[0].split(".")[0..2].join(".")+".254"
 
-  }
+# Create network_metadata for inventory
+network_metadata = {
+  'racks' => [{}],  # racks numbered from '1'
+  'nodes' => {
+    master_node_name => {
+      'ipaddr' => master_node_ipaddr,
+      'node_roles' => ['master']
+    },
+  },
 }
+(1..num_racks).each do |rack_no|
+  network_metadata['racks'] << {
+    'subnet' => rack_subnets[rack_no],
+    'as_number' => (ENV["VAGRANT_MR_RACK#{rack_no}_AS_NUMBER"] || base_as_number+rack_no).to_i,
+  }
+  (1..nodes_per_rack[rack_no]).each do |node_no|
+    node_name = "%s-%02d-%03d" % [node_name_prefix, rack_no, node_no]
+    subnet_part = rack_subnets[rack_no].split(".")[0..2].join(".")
+    network_metadata["nodes"][node_name] = {
+      'ipaddr'  => "#{subnet_part}.#{node_no}",
+      'gateway' => "#{subnet_part}.254",
+      'node_roles' => ['general']
+    }
+    if 1 == node_no
+      network_metadata["nodes"][node_name]['node_roles'] << 'rr'
+    end
+  end
+end
+File.open("network_metadata.yaml", "w") do |file|
+  file.write(network_metadata.to_yaml)
+end
 
 # Create the lab
-i = 0
 Vagrant.configure("2") do |config|
   config.ssh.insert_key = false
   config.vm.box = box
 
   # Global rovisioning
   config.vm.provision "ssh_configs", type: "file", source: "ssh", destination: "~/ssh"
+  config.vm.provision "network_metadata", type: "file", source: "network_metadata.yaml", destination: "~/network_metadata.yaml"
 
   # configure Master&router VM
-  vm_name = "%s-000" % [node_name_prefix]
-  config.vm.define "#{vm_name}", primary: true do |master_node|
-    master_node.vm.hostname = "#{vm_name}"
+  config.vm.define "#{master_node_name}", primary: true do |master_node|
+    master_node.vm.hostname = "#{master_node_name}"
     # Libvirt provider settings
     master_node.vm.provider(:libvirt) do |domain|
       domain.uri = "qemu+unix:///system"
@@ -92,7 +120,7 @@ Vagrant.configure("2") do |config|
     ### Networks and interfaces
     # "public" network with nat forwarding
     master_node.vm.network(:private_network,
-      :ip => public_subnets[0].split(".")[0..2].join(".")+".254",
+      :ip => master_node_ipaddr,
       :libvirt__host_ip => public_subnets[0].split(".")[0..2].join(".")+".1",
       :model_type => "e1000",
       :libvirt__network_name => "#{node_name_prefix}_public",
@@ -100,7 +128,6 @@ Vagrant.configure("2") do |config|
       :libvirt__forward_mode => "nat"
     )
     # "rack" isolated networks per rack
-#p rack_subnets
     (1..num_racks).each do |rack_no|
       master_node.vm.network(:private_network,
         :ip => rack_subnets[rack_no].split(".")[0..2].join(".")+".254",
@@ -114,8 +141,16 @@ Vagrant.configure("2") do |config|
     # Provisioning (per VM)
     master_node.vm.provision "nodes_list", type: "file", source: "nodes", destination: "/var/tmp/nodes"
     master_node.vm.provision "provision-master.sh", type: "shell", path: "vagrant-scripts/provision-master.sh", env: {
-      'NEW_HOSTNAME' => "#{vm_name}",
+      'NEW_HOSTNAME' => "#{master_node_name}",
     }
+    master_node.vm.provision "etcd", type: "docker", run: "once" do |d|
+      d.pull_images("quay.io/coreos/etcd")
+      d.run("quay.io/coreos/etcd",
+        daemonize: true,
+        args: "-p 4001:4001 -p 2380:2380 -p 2379:2379",
+        cmd: "etcd  -name etcd0  -advertise-client-urls http://#{master_node_ipaddr}:2379,http://#{master_node_ipaddr}:4001  -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001  -initial-advertise-peer-urls http://#{master_node_ipaddr}:2380  -listen-peer-urls http://0.0.0.0:2380  -initial-cluster-token etcd-cluster-1  -initial-cluster etcd0=http://#{master_node_ipaddr}:2380  -initial-cluster-state new",
+      )
+    end
   end
 
   # configure Racks VMs
@@ -147,7 +182,7 @@ Vagrant.configure("2") do |config|
 
         # "rack" isolated network
         slave_node.vm.network(:private_network,
-          :ip => rack_subnets[rack_no].split(".")[0..2].join(".")+".#{node_no}",
+          :ip => network_metadata["nodes"][slave_name]["ipaddr"],
           :libvirt__host_ip => rack_subnets[rack_no].split(".")[0..2].join(".")+".253",
           :model_type => "e1000",
           :libvirt__network_name => "#{node_name_prefix}_rack%02d" % [rack_no],
