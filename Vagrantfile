@@ -79,9 +79,11 @@ router_if_shift = 1
     node_name = "%s-%02d-%03d" % [node_name_prefix, rack_no, node_no]
     subnet_part = rack_subnets[rack_no].split(".")[0..2].join(".")
     network_metadata["nodes"][node_name] = {
-      'ipaddr'  => "#{subnet_part}.#{node_no}",
-      'gateway' => "#{subnet_part}.254",
-      'node_roles' => ['general']
+      'ipaddr'     => "#{subnet_part}.#{node_no}",
+      'gateway'    => "#{subnet_part}.254",
+      'node_roles' => ['general'],
+      'as_number'  => (ENV["VAGRANT_MR_RACK#{rack_no}_AS_NUMBER"] || base_as_number+rack_no).to_i,
+      'rack_no'    => rack_no,
     }
     if 1 == node_no
       network_metadata["nodes"][node_name]['node_roles'] << 'rr'
@@ -159,9 +161,12 @@ Vagrant.configure("2") do |config|
       )
     end
     master_node.vm.provision "provision-bird.sh", type: "shell", path: "vagrant-scripts/provision-bird.sh"
-    (1..num_racks).each do |rack_no|
+    master_node.vm.provision "bird-confd-toml-master", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/master/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-master.toml"
+    (1..num_racks).each do |r|
+      rack_no = "%02d" % r
+      master_node.vm.provision "bird-confd-toml-rack#{rack_no}", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/tor/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-rack#{rack_no}.toml"
       master_node.vm.provision "vrouter-rack#{rack_no}", type: "shell", inline: "/usr/local/bin/virt-router.sh start", env: {
-        'RACK_NO' => "#{rack_no}",
+        'RACK_NO' => "#{r}",
       }
     end
 

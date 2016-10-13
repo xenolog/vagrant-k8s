@@ -19,3 +19,5 @@ mv bird* org/
 mv /vagrant/files/virt-router.sh /usr/local/bin/
 chmod a+x /usr/local/bin/virt-router.sh
 
+mv /vagrant/files/bird_{tor,master}.tmpl /etc/confd/templates/
+

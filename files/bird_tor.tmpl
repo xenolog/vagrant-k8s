@@ -1,0 +1,49 @@
+{{$hostname := getenv "HOSTNAME"}}
+{{$rack_no := getv (printf "/nodes/%s/rack_no" $hostname)}}
+
+# ??? HOW TO PASS rack-NO ???
+
+{{$node_ipaddr := getv (printf "/nodes/%s/ipaddr" $hostname)}}
+{{$local_asnum := getv "/racks/0/as_number"}}
+
+# Configure logging
+log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
+log stderr all;
+#log "tmp" all;
+# Override router ID
+router id {{$node_ipaddr}};
+
+#include "/etc/bird/calico_os_filters.conf";
+
+# Turn on global debugging of all protocols
+debug protocols all;
+# This pseudo-protocol watches all interface up/down events.
+protocol device {
+  scan time 2;    # Scan interfaces every 2 seconds
+}
+
+#<%- @rr_clients.each do |name, ipaddr| -%>
+#include "/etc/bird/peers/compute__<%= name %>.conf";
+#<%- end -%>
+
+# session with master
+protocol bgp 'master' {
+  local as {{$local_asnum}};
+  neighbor {{getv (printf "/racks/%s/veth/0" $rack_no)}} as {{getv (printf "/racks/%s/as_number" $rack_no)}};
+  description "master";
+  import all;
+  export all;
+}
+
+# sessions with RR
+{{range $i := lsdir "/nodes"}} {{if (getv (printf "/nodes/%s/node_roles/1" $i) "xx") eq "rr"}}
+protocol bgp '{{$i}}' {
+  local as {{$local_asnum}};
+  neighbor {{getv (printf "/nodes/%s/ipaddr" $i)}} as {{getv (printf "/nodes/%s/as_number" $i)}};
+  description "RR-{{$i}}";
+  multihop;
+  import all;
+  export all;
+  #next hop keep;  ## ??????
+}
+{{end}} {{end}}
