@@ -13,5 +13,12 @@ sudo hostname $NEW_HOSTNAME
 
 sudo mv ~vagrant/network_metadata.yaml /etc/
 
-apt-get install -y docker.io
+apt-get install -y docker.io traceroute
+
+mv /vagrant/files/confd-0.11.0-linux-amd64 /usr/local/bin/confd
+chmod a+x /usr/local/bin/confd
+mkdir -p /etc/confd/{conf.d,templates}
+
+mv /vagrant/files/etcdtool /usr/local/bin/
+chmod a+x /usr/local/bin/etcdtool
 

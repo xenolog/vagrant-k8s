@@ -55,7 +55,7 @@ master_node_ipaddr = public_subnets[0].split(".")[0..2].join(".")+".254"
 
 # Create network_metadata for inventory
 network_metadata = {
-  'racks' => [{}],  # racks numbered from '1'
+  'racks' => [{'as_number' => "65000"}],  # racks numbered from '1'
   'nodes' => {
     master_node_name => {
       'ipaddr' => master_node_ipaddr,
@@ -63,10 +63,17 @@ network_metadata = {
     },
   },
 }
+transit_subnet = (ENV["VAGRANT_MR_NETWORK_TRANSIT"] || "192.168.192")
+router_if_shift = 1
 (1..num_racks).each do |rack_no|
   network_metadata['racks'] << {
     'subnet' => rack_subnets[rack_no],
     'as_number' => (ENV["VAGRANT_MR_RACK#{rack_no}_AS_NUMBER"] || base_as_number+rack_no).to_i,
+    'phy_if' => "eth#{rack_no+router_if_shift}",
+    'veth' => [
+      "#{transit_subnet}.#{rack_no*4+1}",
+      "#{transit_subnet}.#{rack_no*4+2}"
+    ]
   }
   (1..nodes_per_rack[rack_no]).each do |node_no|
     node_name = "%s-%02d-%03d" % [node_name_prefix, rack_no, node_no]
@@ -151,6 +158,21 @@ Vagrant.configure("2") do |config|
         cmd: "etcd  -name etcd0  -advertise-client-urls http://#{master_node_ipaddr}:2379,http://#{master_node_ipaddr}:4001  -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001  -initial-advertise-peer-urls http://#{master_node_ipaddr}:2380  -listen-peer-urls http://0.0.0.0:2380  -initial-cluster-token etcd-cluster-1  -initial-cluster etcd0=http://#{master_node_ipaddr}:2380  -initial-cluster-state new",
       )
     end
+    master_node.vm.provision "provision-bird.sh", type: "shell", path: "vagrant-scripts/provision-bird.sh"
+    (1..num_racks).each do |rack_no|
+      master_node.vm.provision "vrouter-rack#{rack_no}", type: "shell", inline: "/usr/local/bin/virt-router.sh start", env: {
+        'RACK_NO' => "#{rack_no}",
+      }
+    end
+
+    # per rack
+    # master_node.vm.provision "bird-", type: "docker", run: "once" do |d|
+    #   d.run("xenolog/bird:latest",
+    #     daemonize: true,
+    #     args: "-p 4001:4001 -p 2380:2380 -p 2379:2379",
+    #     cmd: "etcd  -name etcd0  -advertise-client-urls http://#{master_node_ipaddr}:2379,http://#{master_node_ipaddr}:4001  -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001  -initial-advertise-peer-urls http://#{master_node_ipaddr}:2380  -listen-peer-urls http://0.0.0.0:2380  -initial-cluster-token etcd-cluster-1  -initial-cluster etcd0=http://#{master_node_ipaddr}:2380  -initial-cluster-state new",
+    #   )
+    # end
   end
 
   # configure Racks VMs
