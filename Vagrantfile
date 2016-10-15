@@ -160,15 +160,15 @@ Vagrant.configure("2") do |config|
         cmd: "etcd  -name etcd0  -advertise-client-urls http://#{master_node_ipaddr}:2379,http://#{master_node_ipaddr}:4001  -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001  -initial-advertise-peer-urls http://#{master_node_ipaddr}:2380  -listen-peer-urls http://0.0.0.0:2380  -initial-cluster-token etcd-cluster-1  -initial-cluster etcd0=http://#{master_node_ipaddr}:2380  -initial-cluster-state new",
       )
     end
-    master_node.vm.provision "provision-bird.sh", type: "shell", path: "vagrant-scripts/provision-bird.sh"
-    master_node.vm.provision "bird-confd-toml-master", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/master/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-master.toml"
-    (1..num_racks).each do |r|
-      rack_no = "%02d" % r
-      master_node.vm.provision "bird-confd-toml-rack#{rack_no}", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/tor/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-rack#{rack_no}.toml"
-      master_node.vm.provision "vrouter-rack#{rack_no}", type: "shell", inline: "/usr/local/bin/virt-router.sh start", env: {
-        'RACK_NO' => "#{r}",
-      }
-    end
+    master_node.vm.provision "provision-bird", type: "ansible", sudo: true, playbook: "playbooks/mr_bootstrap_master.yaml"
+    #master_node.vm.provision "bird-confd-toml-master", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/master/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-master.toml"
+    # (1..num_racks).each do |r|
+    #   rack_no = "%02d" % r
+    #   master_node.vm.provision "bird-confd-toml-rack#{rack_no}", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/tor/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-rack#{rack_no}.toml"
+    #   master_node.vm.provision "vrouter-rack#{rack_no}", type: "shell", inline: "/usr/local/bin/virt-router.sh start", env: {
+    #     'RACK_NO' => "#{r}",
+    #   }
+    # end
 
     # per rack
     # master_node.vm.provision "bird-", type: "docker", run: "once" do |d|

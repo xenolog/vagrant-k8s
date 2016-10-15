@@ -1,12 +1,12 @@
 [template]
 prefix = "/network_metadata"
-src = "bird_$ROLE.tmpl"
-dest = "/etc/bird/bird_rack$RACK_NO.conf"
+src = "bird_tor{{rack_no}}.tmpl"
+dest = "/etc/bird/bird_tor{{rack_no}}.conf"
 owner = "root"
 mode = "0644"
 keys = [
   "nodes",
   "racks",
 ]
-check_cmd = "ps axf | grep bird | grep rack$RACK_NO"
+check_cmd = "birdc status"
 reload_cmd = "birdc reload"
