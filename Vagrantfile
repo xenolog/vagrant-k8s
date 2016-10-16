@@ -59,7 +59,9 @@ network_metadata = {
   'nodes' => {
     master_node_name => {
       'ipaddr' => master_node_ipaddr,
-      'node_roles' => ['master']
+      'node_roles' => ['master'],
+      'as_number'  => "65000",
+      'rack_no'    => "0",
     },
   },
 }

@@ -13,3 +13,4 @@
         HOSTNAME: "{{ master_node_name }}"
       ignore_errors: True
 
+
