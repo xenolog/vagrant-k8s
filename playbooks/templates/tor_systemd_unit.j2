@@ -1,21 +1,17 @@
 [Unit]
-Description=Raise network interfaces
-Documentation=man:interfaces(5)
-DefaultDependencies=no
-Wants=network.target
-After=local-fs.target network-pre.target apparmor.service systemd-sysctl.service systemd-modules-load.service
-Before=network.target shutdown.target network-online.target
-Conflicts=shutdown.target
+Description=Virtual TOR into network namespace
+After=docker.service
+Requires=docker.service
+Requires=bird.service
+
+[Service]
+#Type=oneshot
+#RemainAfterExit=yes
+TimeoutStartSec=2
+Environment=RACK_NO=%i SYSTEMD=1
+ExecStartPre=-/usr/local/bin/virt-router.sh stop
+ExecStart=/usr/local/bin/virt-router.sh start
+ExecStop=/usr/local/bin/virt-router.sh stop
 
 [Install]
 WantedBy=multi-user.target
-WantedBy=network-online.target
-
-[Service]
-Type=oneshot
-EnvironmentFile=-/etc/default/networking
-ExecStartPre=-/bin/sh -c '[ "$CONFIGURE_INTERFACES" != "no" ] && [ -n "$(ifquery --read-environment --list --exclude=lo)" ] && udevadm settle'
-ExecStart=/sbin/ifup -a --read-environment
-ExecStop=/sbin/ifdown -a --read-environment
-RemainAfterExit=true
-TimeoutStartSec=5min

@@ -3,9 +3,11 @@
 {{$local_asnum := getv "/racks/0/as_number"}}
 
 # Configure logging
-log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
+#log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
 log stderr all;
 #log "tmp" all;
+#log syslog all;
+#log "/var/log/bird/master.log" all;
 # Override router ID
 router id {{$node_ipaddr}};
 
@@ -13,6 +15,21 @@ router id {{$node_ipaddr}};
 
 # Turn on global debugging of all protocols
 debug protocols all;
+
+protocol kernel {
+  learn;          # Learn all alien routes from the kernel
+  persist;        # Don't remove routes on bird shutdown
+  scan time 2;    # Scan kernel routing table every 2 seconds
+  import all;
+  graceful restart;
+  export all;     # Default is export none
+}
+
+protocol direct {
+  interface "*";         # For exclude the ARCnets, use "-arc*", "*"
+  #check link yes;
+}
+
 # This pseudo-protocol watches all interface up/down events.
 protocol device {
   scan time 2;    # Scan interfaces every 2 seconds

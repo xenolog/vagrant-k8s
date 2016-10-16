@@ -30,6 +30,13 @@ etcd_fetch_data() {
 }
 
 router_start() {
+  if [[ "${SYSTEMD}" != "1" ]] ; then
+    echo "The better way to start TOR virtual router is a 'systemctl start tar@{RACK_NO}' call."
+    BIRD_RUNMODE=""
+  else
+    BIRD_RUNMODE="-f"
+  fi
+
   ip netns | grep $NETNS_NAME
   if [[ $? == 0 ]] ; then
     echo "Router network namespace '${NETNS_NAME}' already exists. do nothing..."
@@ -38,9 +45,11 @@ router_start() {
   etcd_fetch_data
   # create netns
   ip netns add $NETNS_NAME
-  $RUN_IN_NS sysctl -w net.ipv6.conf.all.disable_ipv6=1
-  $RUN_IN_NS sysctl -w net.ipv6.conf.default.disable_ipv6=1
-  $RUN_IN_NS sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+  $RUN_IN_NS sysctl -w net.ipv6.conf.all.disable_ipv6=1 2>&1 > /dev/null
+  $RUN_IN_NS sysctl -w net.ipv6.conf.default.disable_ipv6=1 2>&1 > /dev/null
+  $RUN_IN_NS sysctl -w net.ipv6.conf.lo.disable_ipv6=1 2>&1 > /dev/null
+  $RUN_IN_NS sysctl -w net.ipv4.conf.all.rp_filter=0 2>&1 > /dev/null
+  $RUN_IN_NS sysctl -w net.ipv4.conf.default.rp_filter=0 2>&1 > /dev/null
   #create veth
   ip link add dev $VETH_A type veth peer name $VETH_B
   ip link set $VETH_B netns $NETNS_NAME
@@ -58,11 +67,14 @@ router_start() {
   $RUN_IN_NS ip a add "${PHY_IP}/${PHY_MASKLEN}" dev $PHY_IF
   $RUN_IN_NS ip l set up $PHY_IF
 
+  # run BIRD bgpd daemon for rack
+  source /etc/bird/envvars
+  $RUN_IN_NS /usr/sbin/bird ${BIRD_RUNMODE} -u ${BIRD_RUN_USER} -g ${BIRD_RUN_GROUP} -c /etc/bird/bird_tor${RACK_NO}.conf -s /run/bird/bird_tor${RACK_NO}.ctl -P /run/bird/bird_tor${RACK_NO}.pid
 }
 
 router_stop() {
   etcd_fetch_data
-  ip netns | grep $NETNS_NAME
+  ip netns | grep $NETNS_NAME 2>&1 > /dev/null
   NO_NS=$?
   if [[ $NO_NS == 0 ]] ; then
     ip netns pids $NETNS_NAME | xargs -n1 kill -9
@@ -71,11 +83,12 @@ router_stop() {
   if [[ $NO_NS == 0 ]] ; then
     ip netns del $NETNS_NAME
   fi
+  rm /run/bird/bird_tor${RACK_NO}.* 2>&1 > /dev/null
 }
 
 # main
 
-if [ $# -ne 1 ]; then
+if [[ $# -ne 1 ]]; then
     echo $USAGE
     exit 1
 fi

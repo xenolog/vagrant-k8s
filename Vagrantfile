@@ -70,6 +70,7 @@ router_if_shift = 1
 (1..num_racks).each do |rack_no|
   network_metadata['racks'] << {
     'subnet' => rack_subnets[rack_no],
+    'tor'    => rack_subnets[rack_no].split(".")[0..2].join(".")+".254",
     'as_number' => (ENV["VAGRANT_MR_RACK#{rack_no}_AS_NUMBER"] || base_as_number+rack_no).to_i,
     'phy_if' => "eth#{rack_no+router_if_shift}",
     'veth' => [

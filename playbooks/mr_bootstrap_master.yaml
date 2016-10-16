@@ -46,14 +46,8 @@
     - command: etcdtool import -r -y -f yaml /network_metadata /etc/network_metadata.yaml
       when: network_metadata_uploaded|failed
 
-    - copy: src=../files/virt-router.sh dest=/usr/local/bin/virt-router.sh
-      register: virt_router_installed
-    - file: path=/usr/local/bin/virt-router.sh mode=755
-      when: virt_router_installed.changed
-
-    - file: path=/etc/init/bird.override state=touch
-    - file: path=/etc/init/bird6.override state=touch
-    - apt_repository: repo='ppa:cz.nic-labs/bird'
+    - name: Install BIRD bgpd
+      apt_repository: repo='ppa:cz.nic-labs/bird'
     - apt: name=bird state=latest update_cache=yes
     - file: path=/etc/init/bird.override state=absent
     - copy: src=templates/bird_master.toml.j2 dest=/etc/confd/conf.d/bird.toml
@@ -63,7 +57,10 @@
       environment:
         HOSTNAME: "{{ master_node_name }}"
       ignore_errors: True
-    # disable start of bird6 XXXXX
+    - file: path=/var/log/bird state=directory owner=bird group=bird mode=755
+    - copy: dest=/var/log/bird/master.log content="Use 'journalctl -u bird' for looking log."
     - name: disable start of bird6 service
       file: path=/etc/bird/bird6.conf state=absent
-    - service: name=bird enabled=yes state=started
+    - service: name=bird6 enabled=no state=stopped
+    - service: name=bird enabled=yes state=reloaded
+
