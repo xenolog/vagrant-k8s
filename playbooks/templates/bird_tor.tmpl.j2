@@ -1,7 +1,5 @@
+{{$rack_number := "XXX_rack_number_XXX"}}
 {{$hostname := getenv "HOSTNAME"}}
-
-# ??? HOW TO PASS rack-NO ???
-
 {{$node_ipaddr := getv (printf "/nodes/%s/ipaddr" $hostname)}}
 {{$local_asnum := getv "/racks/0/as_number"}}
 
@@ -28,7 +26,7 @@ protocol device {
 # session with master
 protocol bgp 'master' {
   local as {{$local_asnum}};
-  neighbor {{getv (printf "/racks/%s/veth/0" $rack_no)}} as {{getv (printf "/racks/%s/as_number" $rack_no)}};
+  neighbor {{getv (printf "/racks/%s/veth/0" $rack_number)}} as {{getv (printf "/racks/%s/as_number" $rack_number)}};
   description "master";
   import all;
   export all;

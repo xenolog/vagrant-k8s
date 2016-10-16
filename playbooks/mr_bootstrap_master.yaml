@@ -1,6 +1,18 @@
 ---
 - hosts: all
   tasks:
+    - name: Install addition packages
+      apt: name={{item}} state=latest
+      with_items:
+        - traceroute
+        - docker.io
+        - python-docker
+
+    - docker_image: name=quay.io/coreos/etcd:latest
+    - template: src="templates/etcd_systemd_unit.j2" dest="/etc/systemd/system/etcd.service"
+    - command: systemctl daemon-reload
+    - service: name=etcd enabled=yes state=started
+
     - command: test -x /usr/local/bin/confd
       register: confd_installed
       ignore_errors: True
@@ -17,13 +29,15 @@
     - command: mv /vagrant/files/bin/etcdtool /usr/local/bin/
       when: etcdtool_installed|failed
     - file: path=/usr/local/bin/etcdtool mode=755
+      when: etcdtool_installed|failed
 
     - command: test -x /usr/local/bin/etcdctl
       register: etcdctl_installed
       ignore_errors: True
-    - command: docker cp quay.io-coreos-etcd:/usr/local/bin/etcdctl /usr/local/bin/etcdctl
+    - command: docker cp etcd.service:/usr/local/bin/etcdctl /usr/local/bin/etcdctl
       when: etcdctl_installed|failed
     - file: path=/usr/local/bin/etcdctl mode=755
+      when: etcdctl_installed|failed
 
     - copy: src=../network_metadata.yaml dest=/etc/network_metadata.yaml
     - command: etcdctl ls /network_metadata
@@ -32,11 +46,10 @@
     - command: etcdtool import -r -y -f yaml /network_metadata /etc/network_metadata.yaml
       when: network_metadata_uploaded|failed
 
-    - command: test -x /usr/local/bin/virt-router.sh
+    - copy: src=../files/virt-router.sh dest=/usr/local/bin/virt-router.sh
       register: virt_router_installed
-      ignore_errors: True
-    - command: mv /vagrant/files/virt-router.sh /usr/local/bin/
-      when: virt_router_installed|failed
+    - file: path=/usr/local/bin/virt-router.sh mode=755
+      when: virt_router_installed.changed
 
     - file: path=/etc/init/bird.override state=touch
     - file: path=/etc/init/bird6.override state=touch
@@ -45,8 +58,12 @@
     - file: path=/etc/init/bird.override state=absent
     - copy: src=templates/bird_master.toml.j2 dest=/etc/confd/conf.d/bird.toml
     - copy: src=templates/bird_master.tmpl.j2 dest=/etc/confd/templates/bird.tmpl
-    - command: confd -onetime
+    - name: Generate main BIRD config by confd
+      command: confd -onetime
       environment:
-        HOSTNAME: svasilenko-mr-000
+        HOSTNAME: "{{ master_node_name }}"
       ignore_errors: True
+    # disable start of bird6 XXXXX
+    - name: disable start of bird6 service
+      file: path=/etc/bird/bird6.conf state=absent
     - service: name=bird enabled=yes state=started

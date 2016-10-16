@@ -152,32 +152,36 @@ Vagrant.configure("2") do |config|
     master_node.vm.provision "provision-master.sh", type: "shell", path: "vagrant-scripts/provision-master.sh", env: {
       'NEW_HOSTNAME' => "#{master_node_name}",
     }
-    master_node.vm.provision "etcd", type: "docker", run: "once" do |d|
-      d.pull_images("quay.io/coreos/etcd")
-      d.run("quay.io/coreos/etcd",
-        daemonize: true,
-        args: "-p 4001:4001 -p 2380:2380 -p 2379:2379",
-        cmd: "etcd  -name etcd0  -advertise-client-urls http://#{master_node_ipaddr}:2379,http://#{master_node_ipaddr}:4001  -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001  -initial-advertise-peer-urls http://#{master_node_ipaddr}:2380  -listen-peer-urls http://0.0.0.0:2380  -initial-cluster-token etcd-cluster-1  -initial-cluster etcd0=http://#{master_node_ipaddr}:2380  -initial-cluster-state new",
-      )
+
+    master_node.vm.provision "provision-bird", type: "ansible" do |a|
+      a.sudo = true
+      a.playbook = "playbooks/mr_bootstrap_master.yaml"
+      a.host_vars = {
+        "#{master_node_name}" => {
+          "master_node_name" => "#{master_node_name}",
+          "master_node_ipaddr" => "#{master_node_ipaddr}",
+        }
+      }
     end
-    master_node.vm.provision "provision-bird", type: "ansible", sudo: true, playbook: "playbooks/mr_bootstrap_master.yaml"
-    #master_node.vm.provision "bird-confd-toml-master", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/master/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-master.toml"
-    # (1..num_racks).each do |r|
+    (1..num_racks).each do |r|
     #   rack_no = "%02d" % r
     #   master_node.vm.provision "bird-confd-toml-rack#{rack_no}", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/tor/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-rack#{rack_no}.toml"
     #   master_node.vm.provision "vrouter-rack#{rack_no}", type: "shell", inline: "/usr/local/bin/virt-router.sh start", env: {
     #     'RACK_NO' => "#{r}",
     #   }
-    # end
-
-    # per rack
-    # master_node.vm.provision "bird-", type: "docker", run: "once" do |d|
-    #   d.run("xenolog/bird:latest",
-    #     daemonize: true,
-    #     args: "-p 4001:4001 -p 2380:2380 -p 2379:2379",
-    #     cmd: "etcd  -name etcd0  -advertise-client-urls http://#{master_node_ipaddr}:2379,http://#{master_node_ipaddr}:4001  -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001  -initial-advertise-peer-urls http://#{master_node_ipaddr}:2380  -listen-peer-urls http://0.0.0.0:2380  -initial-cluster-token etcd-cluster-1  -initial-cluster etcd0=http://#{master_node_ipaddr}:2380  -initial-cluster-state new",
-    #   )
-    # end
+      master_node.vm.provision "provision-tor%02d" % r, type: "ansible" do |a|
+        a.sudo = true
+        a.playbook = "playbooks/mr_bootstrap_rack_on_master.yaml"
+        a.host_vars = {
+          "#{master_node_name}" => {
+            "master_node_name" => "#{master_node_name}",
+            "master_node_ipaddr" => "#{master_node_ipaddr}",
+            "rack_no" => "'%02d'" % r,
+            "rack_number" => "#{r}",
+          }
+        }
+      end
+    end
   end
 
   # configure Racks VMs

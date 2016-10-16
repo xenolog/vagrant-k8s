@@ -1,6 +1,15 @@
 ---
 - hosts: all
   tasks:
-    - template: src=templates/bird_tor.toml.j2 dest=/etc/confd/conf.d/bird_tor{{rack_no}}.toml
-    - copy: src=templates/bird_tor.tmpl.j2 dest=/etc/confd/templates/bird_tor{{rack_no}}.tmpl
-    - lineinfile: dest=/etc/confd/templates/bird_tor{{rack_no}}.tmpl insertbefore=BOF line=\{\{$rack_no := "{{rack_no}}"\}\}
+    - template: src="templates/bird_tor.toml.j2" dest="/etc/confd/conf.d/bird_tor{{"%02d"|format(rack_number)}}.toml"
+    - copy: src="templates/bird_tor.tmpl.j2" dest="/etc/confd/templates/bird_tor{{"%02d"|format(rack_number)}}.tmpl"
+    - replace: >
+        dest="/etc/confd/templates/bird_tor{{"%02d"|format(rack_number)}}.tmpl"
+        regexp="XXX_rack_number_XXX"
+        replace="{{rack_number}}"
+    - name: Generate bird config for rack-{{"%02d"|format(rack_number)}}
+      command: confd -onetime
+      environment:
+        HOSTNAME: "{{ master_node_name }}"
+      ignore_errors: True
+

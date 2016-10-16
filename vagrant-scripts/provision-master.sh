@@ -10,6 +10,3 @@ sudo chown -R root: /root/.ssh
 sudo echo $NEW_HOSTNAME > /tmp/new_hostname
 sudo echo $NEW_HOSTNAME > /etc/hostname
 sudo hostname $NEW_HOSTNAME
-
-apt-get install -y docker.io traceroute
-

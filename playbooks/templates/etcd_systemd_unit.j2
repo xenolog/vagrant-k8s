@@ -1,0 +1,19 @@
+[Unit]
+Description=Etcd Container
+After=docker.service
+Requires=docker.service
+
+[Service]
+TimeoutStartSec=0
+Restart=always
+Environment=ETCD_IPV4={{master_node_ipaddr}}
+ExecStartPre=-/usr/bin/docker rm %n
+#ExecStartPre=/usr/bin/docker pull quay.io/coreos/etcd:latest
+ExecStart=/usr/bin/docker run --rm -p 2379:2379 -p 2380:2380 -p 4001:4001 --name %n \
+  -v /usr/share/ca-certificates/:/etc/ssl/certs quay.io/coreos/etcd:latest \
+  etcd -name etcd0 -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 -listen-peer-urls http://0.0.0.0:2380 \
+  -advertise-client-urls http://${ETCD_IPV4}:2379,http://${ETCD_IPV4}:4001
+ExecStop=/usr/bin/docker kill %n
+
+[Install]
+WantedBy=multi-user.target

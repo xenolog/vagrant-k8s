@@ -1,7 +1,7 @@
 [template]
 prefix = "/network_metadata"
-src = "bird_tor{{rack_no}}.tmpl"
-dest = "/etc/bird/bird_tor{{rack_no}}.conf"
+src = "bird_tor{{"%02d"|format(rack_number)}}.tmpl"
+dest = "/etc/bird/bird_tor{{"%02d"|format(rack_number)}}.conf"
 owner = "root"
 mode = "0644"
 keys = [
