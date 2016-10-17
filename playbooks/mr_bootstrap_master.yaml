@@ -13,7 +13,8 @@
     - command: systemctl daemon-reload
     - service: name=etcd enabled=yes state=started
 
-    - command: test -x /usr/local/bin/confd
+    - name: Install CONFD
+      command: test -x /usr/local/bin/confd
       register: confd_installed
       ignore_errors: True
     - command: mv /vagrant/files/bin/confd-0.11.0-linux-amd64 /usr/local/bin/confd
@@ -23,7 +24,8 @@
     - file: path=/etc/confd/conf.d state=directory
     - file: path=/etc/confd/templates state=directory
 
-    - command: test -x /usr/local/bin/etcdtool
+    - name: Install ETCDTOOL
+      command: test -x /usr/local/bin/etcdtool
       register: etcdtool_installed
       ignore_errors: True
     - command: mv /vagrant/files/bin/etcdtool /usr/local/bin/

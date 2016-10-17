@@ -3,6 +3,13 @@
 
 require "yaml"
 
+class ::Hash
+    def deep_merge(second)
+        merger = proc { |key, v1, v2| Hash === v1 && Hash === v2 ? v1.merge(v2, &merger) : Array === v1 && Array === v2 ? v1 | v2 : [:undefined, nil, :nil].include?(v2) ? v1 : v2 }
+        self.merge(second.to_h, &merger)
+    end
+end
+
 pool = ENV["VAGRANT_MR_POOL"] || "10.250.0.0/16"
 
 ENV["VAGRANT_DEFAULT_PROVIDER"] = "libvirt"
@@ -102,6 +109,30 @@ Vagrant.configure("2") do |config|
   config.ssh.insert_key = false
   config.vm.box = box
 
+  # prepare ansible deployment facts for master and slave nodes
+  # This hash should be assembled before run any provisioners for prevent
+  # parallel provisioning race conditions
+  ansible_host_vars = {}
+  (1..num_racks).each do |rack_no|
+    (1..nodes_per_rack[rack_no]).each do |node_no|
+      slave_name = "%s-%02d-%03d" % [node_name_prefix, rack_no, node_no]
+      ansible_host_vars[slave_name] = {
+        "node_name"          => slave_name,
+        "master_node_name"   => master_node_name,
+        "master_node_ipaddr" => master_node_ipaddr,
+        "rack_no"            => "'%02d'" % rack_no,
+        "node_no"            => "'%03d'" % node_no,
+        "rack_number"        => rack_no,
+        "rack_iface"         => "eth1",
+        "tor_ipaddr"         => network_metadata['racks'][rack_no]['tor'],
+      }
+    end
+  end
+  ansible_host_vars[master_node_name] = {
+    "master_node_name"   => "#{master_node_name}",
+    "master_node_ipaddr" => "#{master_node_ipaddr}",
+  }
+
   # Global rovisioning
   config.vm.provision "ssh_configs", type: "file", source: "ssh", destination: "~/ssh"
   config.vm.provision "network_metadata", type: "file", source: "network_metadata.yaml", destination: "~/network_metadata.yaml"
@@ -155,34 +186,24 @@ Vagrant.configure("2") do |config|
     master_node.vm.provision "provision-master.sh", type: "shell", path: "vagrant-scripts/provision-master.sh", env: {
       'NEW_HOSTNAME' => "#{master_node_name}",
     }
-
     master_node.vm.provision "provision-bird", type: "ansible" do |a|
       a.sudo = true
       a.playbook = "playbooks/mr_bootstrap_master.yaml"
-      a.host_vars = {
-        "#{master_node_name}" => {
-          "master_node_name" => "#{master_node_name}",
-          "master_node_ipaddr" => "#{master_node_ipaddr}",
-        }
-      }
+      a.host_vars = ansible_host_vars.deep_merge({"#{master_node_name}" => {
+                                                    "rack_no"     => "'00'",
+                                                    "rack_number" => "0",
+                                                 }})
     end
     (1..num_racks).each do |r|
-    #   rack_no = "%02d" % r
-    #   master_node.vm.provision "bird-confd-toml-rack#{rack_no}", type: "shell", inline: "sed -e 's/\\$RACK_NO/00/g' -e 's/\\$ROLE/tor/g' /vagrant/files/bird.toml > /etc/confd/conf.d/bird-rack#{rack_no}.toml"
-    #   master_node.vm.provision "vrouter-rack#{rack_no}", type: "shell", inline: "/usr/local/bin/virt-router.sh start", env: {
-    #     'RACK_NO' => "#{r}",
-    #   }
+      ansible_host_vars[master_node_name]["rack_no"] =
+      ansible_host_vars[master_node_name]["rack_number"] = r
       master_node.vm.provision "provision-tor%02d" % r, type: "ansible" do |a|
         a.sudo = true
         a.playbook = "playbooks/mr_bootstrap_rack_on_master.yaml"
-        a.host_vars = {
-          "#{master_node_name}" => {
-            "master_node_name" => "#{master_node_name}",
-            "master_node_ipaddr" => "#{master_node_ipaddr}",
-            "rack_no" => "'%02d'" % r,
-            "rack_number" => "#{r}",
-          }
-        }
+        a.host_vars = ansible_host_vars.deep_merge({"#{master_node_name}" => {
+                                                      "rack_no"     => "'%02d'" % r,
+                                                      "rack_number" => "#{r}",
+                                                   }})
       end
     end
   end
@@ -228,6 +249,11 @@ Vagrant.configure("2") do |config|
         slave_node.vm.provision "provision-node.sh", type: "shell", path: "vagrant-scripts/provision-node.sh", env: {
           'NEW_HOSTNAME' => "#{slave_name}",
         }
+        slave_node.vm.provision "provision-#{slave_name}", type: "ansible" do |a|
+          a.sudo = true
+          a.playbook = "playbooks/mr_bootstrap_node.yaml"
+          a.host_vars = ansible_host_vars
+        end
       end
     end
   end

@@ -1,0 +1,72 @@
+---
+- hosts: all
+  tasks:
+    - name: Install addition packages
+      apt: name={{item}} state=latest
+      with_items:
+        - traceroute
+
+    - name: Install CONFD
+      command: test -x /usr/local/bin/confd
+      register: confd_installed
+      ignore_errors: True
+    - command: mv /vagrant/files/bin/confd-0.11.0-linux-amd64 /usr/local/bin/confd
+      when: confd_installed|failed
+    - file: path=/usr/local/bin/confd mode=755
+    - file: path=/etc/confd state=directory
+    - file: path=/etc/confd/conf.d state=directory
+    - file: path=/etc/confd/templates state=directory
+
+    - name: Install ETCDTOOL
+      command: test -x /usr/local/bin/etcdtool
+      register: etcdtool_installed
+      ignore_errors: True
+    - command: mv /vagrant/files/bin/etcdtool /usr/local/bin/
+      when: etcdtool_installed|failed
+    - file: path=/usr/local/bin/etcdtool mode=755
+      when: etcdtool_installed|failed
+
+    - name: transfer network_metadata
+      copy: src=../network_metadata.yaml dest=/etc/network_metadata.yaml
+
+    - name: Configure default gateway through TOR
+      lineinfile:
+        dest: /etc/network/interfaces
+        line: "      gateway {{tor_ipaddr}}"
+        insertafter: "^iface\\s+{{rack_iface}}\\s+"
+      register: interfaces_rack_changed
+    - replace:
+        dest: /etc/dhcp/dhclient.conf
+        regexp: "(,\\s+routers,)"
+        replace: ","
+      register: dhclient_conf_changed
+    - shell: "ifdown eth0 ;sleep 1; ifup eth0"
+      ignore_errors: True
+      when: dhclient_conf_changed.changed
+    - command: "ip route delete default"
+      ignore_errors: True
+      when: interfaces_rack_changed.changed
+    - shell: "ifdown {{rack_iface}} ;sleep 1; ifup {{rack_iface}}"
+      ignore_errors: True
+      when: interfaces_rack_changed.changed
+
+
+
+    # - name: Install BIRD bgpd
+    #   apt_repository: repo='ppa:cz.nic-labs/bird'
+    # - apt: name=bird state=latest update_cache=yes
+    # - file: path=/etc/init/bird.override state=absent
+    # - copy: src=templates/bird_master.toml.j2 dest=/etc/confd/conf.d/bird.toml
+    # - copy: src=templates/bird_master.tmpl.j2 dest=/etc/confd/templates/bird.tmpl
+    # - name: Generate main BIRD config by confd
+    #   command: confd -onetime
+    #   environment:
+    #     HOSTNAME: "{{ master_node_name }}"
+    #   ignore_errors: True
+    # - file: path=/var/log/bird state=directory owner=bird group=bird mode=755
+    # - copy: dest=/var/log/bird/master.log content="Use 'journalctl -u bird' for looking log."
+    # - name: disable start of bird6 service
+    #   file: path=/etc/bird/bird6.conf state=absent
+    # - service: name=bird6 enabled=no state=stopped
+    # - service: name=bird enabled=yes state=reloaded
+
