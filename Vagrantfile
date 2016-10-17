@@ -186,7 +186,7 @@ Vagrant.configure("2") do |config|
     master_node.vm.provision "provision-master.sh", type: "shell", path: "vagrant-scripts/provision-master.sh", env: {
       'NEW_HOSTNAME' => "#{master_node_name}",
     }
-    master_node.vm.provision "provision-bird", type: "ansible" do |a|
+    master_node.vm.provision "provision-master", type: "ansible" do |a|
       a.sudo = true
       a.playbook = "playbooks/mr_bootstrap_master.yaml"
       a.host_vars = ansible_host_vars.deep_merge({"#{master_node_name}" => {

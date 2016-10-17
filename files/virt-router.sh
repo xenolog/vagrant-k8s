@@ -27,6 +27,7 @@ etcd_fetch_data() {
   PHY_NET=`etcdctl get "/network_metadata/racks/${RACK_NO_SHORT}/subnet"`
   PHY_IP=`echo ${PHY_NET} | awk -F. '{print $1"."$2"."$3"."254}'`
   PHY_MASKLEN=`echo ${PHY_NET} | awk -F'/' '{print $2}'`
+  OUT_IF='eth0'
 }
 
 router_start() {
@@ -57,7 +58,6 @@ router_start() {
   $RUN_IN_NS ip l set up lo
   $RUN_IN_NS ip a add "${VETH_B_IP}/${VETH_MASKLEN}" dev $VETH_B
   $RUN_IN_NS ip l set up $VETH_B
-  $RUN_IN_NS ip r add default dev $VETH_B
   ip a add "${VETH_A_IP}/${VETH_MASKLEN}" dev $VETH_A
   ip l set up $VETH_A
 
@@ -67,6 +67,9 @@ router_start() {
   $RUN_IN_NS ip a add "${PHY_IP}/${PHY_MASKLEN}" dev $PHY_IF
   $RUN_IN_NS ip l set up $PHY_IF
 
+  # NAT all traffic to external world from this rack
+  iptables -t nat -A POSTROUTING -s ${PHY_NET} --out-interface ${OUT_IF} -j MASQUERADE
+
   # run BIRD bgpd daemon for rack
   source /etc/bird/envvars
   $RUN_IN_NS /usr/sbin/bird ${BIRD_RUNMODE} -u ${BIRD_RUN_USER} -g ${BIRD_RUN_GROUP} -c /etc/bird/bird_tor${RACK_NO}.conf -s /run/bird/bird_tor${RACK_NO}.ctl -P /run/bird/bird_tor${RACK_NO}.pid
@@ -74,6 +77,9 @@ router_start() {
 
 router_stop() {
   etcd_fetch_data
+  # remove NAT for traffic to external world from this rack
+  iptables -t nat -D POSTROUTING -s ${PHY_NET} --out-interface ${OUT_IF} -j MASQUERADE
+
   ip netns | grep $NETNS_NAME 2>&1 > /dev/null
   NO_NS=$?
   if [[ $NO_NS == 0 ]] ; then
