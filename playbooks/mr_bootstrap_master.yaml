@@ -54,6 +54,11 @@
       ignore_errors: True
     - command: etcdtool import -y -f yaml /network_metadata /etc/network_metadata.yaml
       when: network_metadata_uploaded|failed
+      register: network_metadata_loaded_to_etcd
+    - command: /usr/local/bin/etcd.sh backup
+      environment:
+        ETCD_IPV4: "{{ master_node_ipaddr }}"
+      when: network_metadata_loaded_to_etcd.changed
 
     - name: Install BIRD bgpd
       apt_repository: repo='ppa:cz.nic-labs/bird'

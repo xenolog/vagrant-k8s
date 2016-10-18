@@ -5,7 +5,7 @@ if [[ "z${DEBUG}" != "z" ]] ; then
 fi
 
 HOSTNAME=`hostname`
-USAGE="Usage: $0 {start|stop}";
+USAGE="Usage: $0 {start|stop|backup}";
 
 etcd_fetch_data() {
   CONTAINER_NAME="${CONTAINER_NAME:-etcd.service}"
@@ -57,13 +57,18 @@ etcd_post_start() {
   fi
 }
 
+etcd_backup() {
+  etcd_fetch_data
+  mkdir -p /var/lib/etcd
+  etcdtool -p http://127.0.0.1:4001 export -f yaml / > ${ETCD_BACKUP}
+}
+
 etcd_stop() {
   etcd_fetch_data
 
   if [[ ! -z $(docker ps | grep " ${CONTAINER_NAME}" | awk '{print $1}') ]] ; then
     # backup of etcd data should be only if etcd is running
-    mkdir -p /var/lib/etcd
-    etcdtool -p http://127.0.0.1:4001 export -f yaml / > ${ETCD_BACKUP}
+    etcd_backup
     /usr/bin/docker kill ${CONTAINER_NAME} 2>&1 > /dev/null
   fi
 
@@ -95,6 +100,9 @@ case $1 in
     ;;
 
     post-stop) etcd_post_stop
+    ;;
+
+    backup) etcd_backup
     ;;
 
     *) usage; exit $OCF_ERR_UNIMPLEMENTED
