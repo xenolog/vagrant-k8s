@@ -20,4 +20,4 @@
       environment:
         HOSTNAME: "{{ master_node_name }}"
       ignore_errors: True
-    - service: name=tor@{{rack_number}} state=running
+    - service: name=tor@{{rack_number}} enabled=yes state=running

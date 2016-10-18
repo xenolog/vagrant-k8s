@@ -8,9 +8,25 @@
         - docker.io
         - python-docker
 
+    - name: Install ETCDTOOL
+      command: test -x /usr/local/bin/etcdtool
+      register: etcdtool_installed
+      ignore_errors: True
+    - command: mv /vagrant/files/bin/etcdtool /usr/local/bin/
+      when: etcdtool_installed|failed
+    - file: path=/usr/local/bin/etcdtool mode=755
+      when: etcdtool_installed|failed
+
+    - name: Install and run ETCD
+      copy: src=../files/etcd.sh dest=/usr/local/bin/etcd.sh
+      register: etcd_sh_installed
+    - file: path=/usr/local/bin/etcd.sh mode=755
+      when: etcd_sh_installed.changed
     - docker_image: name=quay.io/coreos/etcd:latest
     - template: src="templates/etcd_systemd_unit.j2" dest="/etc/systemd/system/etcd.service"
+      register: etcd_unit_installed
     - command: systemctl daemon-reload
+      register: when_unit_installed.changed
     - service: name=etcd enabled=yes state=started
 
     - name: Install CONFD
@@ -24,15 +40,6 @@
     - file: path=/etc/confd/conf.d state=directory
     - file: path=/etc/confd/templates state=directory
 
-    - name: Install ETCDTOOL
-      command: test -x /usr/local/bin/etcdtool
-      register: etcdtool_installed
-      ignore_errors: True
-    - command: mv /vagrant/files/bin/etcdtool /usr/local/bin/
-      when: etcdtool_installed|failed
-    - file: path=/usr/local/bin/etcdtool mode=755
-      when: etcdtool_installed|failed
-
     - command: test -x /usr/local/bin/etcdctl
       register: etcdctl_installed
       ignore_errors: True
@@ -45,7 +52,7 @@
     - command: etcdctl ls /network_metadata
       register: network_metadata_uploaded
       ignore_errors: True
-    - command: etcdtool import -r -y -f yaml /network_metadata /etc/network_metadata.yaml
+    - command: etcdtool import -y -f yaml /network_metadata /etc/network_metadata.yaml
       when: network_metadata_uploaded|failed
 
     - name: Install BIRD bgpd
